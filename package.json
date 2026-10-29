@@ -1,0 +1,16 @@
+{
+  "name": "askus",
+  "version": "1.0.0",
+  "description": "Web remake of the askUs mobile game: daily 'who's most likely to' polls with your friends.",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js --dev",
+    "test": "node --test test/"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED"
+}

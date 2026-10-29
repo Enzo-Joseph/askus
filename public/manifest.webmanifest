@@ -1,0 +1,10 @@
+{
+  "name": "askUs",
+  "short_name": "askUs",
+  "description": "Chaque jour, une question sur tes potes.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#efebe2",
+  "theme_color": "#efebe2",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
