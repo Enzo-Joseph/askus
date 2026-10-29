@@ -42,6 +42,8 @@ test('results stay hidden until you vote', () => {
   const res = game.vote(ana, poll.id, ben.id);
   assert.equal(res.poll.results.rows[0].id, ben.id);
   assert.equal(res.poll.results.rows[0].pct, 100);
+  assert.deepEqual(res.poll.results.rows[0].voters.map((v) => v.id), [ana.id], 'each row lists who voted for that person');
+  assert.ok(res.poll.results.rows.slice(1).every((row) => row.voters.length === 0));
   assert.equal(game.groupView(ben, group.id).polls[0].results, null);
 
   assert.throws(() => game.vote(ana, poll.id, ben.id), /déjà voté/);

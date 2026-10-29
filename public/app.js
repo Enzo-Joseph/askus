@@ -385,7 +385,7 @@ function renderProfile() {
       h('div', { class: 'h2' }, 'Comment ça marche'),
       h('ul', { class: 'howto' },
         h('li', null, ic('heart'), h('span', null, minMembers > 1 ? `Crée un groupe et fais venir au moins ${minMembers - 1} potes avec le code.` : 'Crée un groupe et partage le code avec tes potes.')),
-        h('li', null, ic('star'), h('span', null, 'Une nouvelle question tombe chaque jour. Vote pour quelqu’un (personne ne voit qui) ou choisis ton camp.')),
+        h('li', null, ic('star'), h('span', null, 'Une nouvelle question tombe chaque jour. Vote pour quelqu’un ou choisis ton camp.')),
         h('li', null, ic('eye'), h('span', null, 'Tu ne vois les résultats qu’après avoir voté.')),
         h('li', null, ic('flame'), h('span', null, 'Vote tous les jours pour enchaîner une série.')),
         h('li', null, ic('pencil'), h('span', null, 'Tout le monde peut poser sa propre question au groupe, à tout moment.')))),
@@ -460,7 +460,7 @@ function groupCard(g) {
   else if (g.pending) status = h('span', { class: 'badge new' }, g.pending > 1 ? `${g.pending} nouvelles` : 'Nouveau\u00a0!');
   else status = h('span', { class: 'badge done' }, 'Voté');
   const q = g.question;
-  const sub = g.waiting ? 'En attente de tes potes' : q ? (q.type === 'who' ? `${q.prefix} ${q.text}` : q.text) : '';
+  const sub = g.waiting ? 'En attente de tes potes' : q ? (q.type === 'who' && q.prefix ? `${q.prefix} ${q.text}` : q.text) : '';
   return h('button', { class: 'group-card px', onclick: () => (location.hash = `#/g/${g.id}`) },
     h('div', { class: 'tile px flat' }, art(g.icon, 4)),
     h('div', { class: 'info' }, h('div', { class: 'name' }, g.name), h('div', { class: 'sub' }, sub),
@@ -687,7 +687,7 @@ function pollCard(p, g) {
       : h('span', { class: 'chip' }, p.pack ? [art(p.pack.icon, 2), p.pack.name] : 'Du jour'),
     h('span', null, `${p.voteCount}/${p.memberCount} ont voté`));
 
-  const body = [h('div', null, h('div', { class: 'poll-prefix' }, p.prefix), h('div', { class: 'poll-text' }, p.text))];
+  const body = [h('div', null, p.prefix ? h('div', { class: 'poll-prefix' }, p.prefix) : null, h('div', { class: 'poll-text' }, p.text))];
   if (!p.results) {
     if (isWho) {
       body.push(h('div', { class: 'vote-grid' }, g.members.map((m) =>
@@ -697,7 +697,7 @@ function pollCard(p, g) {
         h('button', { class: 'wyr-option a px', onclick: action(() => vote(p, 'a')) }, p.a),
         h('button', { class: 'wyr-option b px', onclick: action(() => vote(p, 'b')) }, p.b)));
     }
-    body.push(h('div', { class: 'poll-hint' }, isWho ? 'Personne ne voit ton choix' : 'Tout le monde voit ton camp'));
+    body.push(h('div', { class: 'poll-hint' }, isWho ? 'Tout le monde verra pour qui tu as voté' : 'Tout le monde verra ton camp'));
   } else {
     body.push(isWho ? whoResults(p) : wyrResults(p));
     body.push(h('div', { class: 'poll-actions' },
@@ -746,7 +746,10 @@ function whoResults(p) {
             r.id === state.me.id ? h('span', { class: 'you-tag' }, 'toi') : null,
             p.myVote === r.id ? h('span', { class: 'you-tag' }, 'ton choix') : null),
           h('span', null, `${r.pct}%`)),
-        h('div', { class: 'result-bar' }, fill)));
+        h('div', { class: 'result-bar' }, fill),
+        r.voters.length
+          ? h('div', { class: 'result-voters' }, h('span', { class: 'muted small' }, 'par'), r.voters.map((v) => h('span', { class: 'voter' }, avatarEl(v, 'xs'), v.name)))
+          : null));
   });
   queueMicrotask(() => state.animated.add(p.id));
   return h('div', { class: 'results' }, p.results.total ? null : h('div', { class: 'poll-hint' }, 'Personne n’a voté.'), rows);

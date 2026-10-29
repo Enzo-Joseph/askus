@@ -235,6 +235,8 @@ p { margin: 0; }
 }
 .result-row.top .result-fill { background: repeating-linear-gradient(90deg, var(--primary) 0 10px, transparent 10px 12px); }
 .result-row.zero { opacity: 0.45; }
+.result-voters { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin-top: 8px; }
+.voter { display: inline-flex; align-items: center; gap: 6px; font-size: 19px; }
 .you-tag { font-size: 10px; padding: 2px 5px; background: var(--well); color: var(--secondary); flex: none; text-transform: uppercase; }
 
 .wyr-results { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }

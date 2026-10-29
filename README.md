@@ -54,7 +54,7 @@ lost. Dev mode (bots, skip day) is only available locally.
 | --- | --- |
 | Groups | Create a group, then invite friends with a 6-character code or a link. Questions start at 3 members. |
 | Daily question | A new question each day, drawn without repeats from all 8 packs. It closes at midnight, Paris time. |
-| Question types | **Vote for a friend** (anonymous) or **This or that** (everyone sees which side you picked). |
+| Question types | **Vote for a friend** or **This or that**. Votes are public: results show who voted for whom. |
 | Your own questions | Anyone can post a question to the group at any time. It's open until midnight like the daily one. |
 | Results | Hidden until you vote. Closed questions move to **History**, with results visible to all. |
 | Streaks | Answer the daily question on consecutive days. Missing a day resets it. |
