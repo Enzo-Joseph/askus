@@ -9,8 +9,16 @@ const redis = require('../lib/redis-store');
 
 const MAX_ATTEMPTS = 5;
 
+// vercel.json routes /api/<path> here as /api/index.js?path=<path>; depending on the runtime,
+// req.url is either that rewritten URL or the original one, so accept both.
+function apiPath(url) {
+  const { pathname, searchParams } = new URL(url, 'http://localhost');
+  const routed = searchParams.get('path');
+  return routed !== null && pathname.startsWith('/api/index') ? `/api/${routed}` : pathname;
+}
+
 module.exports = async (req, res) => {
-  const { pathname } = new URL(req.url, 'http://localhost');
+  const pathname = apiPath(req.url);
   let body = {};
   if (req.method !== 'GET') {
     try {

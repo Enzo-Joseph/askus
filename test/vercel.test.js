@@ -85,6 +85,15 @@ test('the API works end to end with data kept in Redis', async () => {
   assert.equal(after.polls[0].voteCount, 2);
 });
 
+test('works whether Vercel passes the original or the rewritten URL', async () => {
+  const { body } = await call('POST', '/api/users', { body: { name: 'Dana' } });
+  const original = await call('GET', '/api/me', { token: body.token });
+  const rewritten = await call('GET', '/api/index.js?path=me', { token: body.token });
+  assert.equal(original.status, 200);
+  assert.deepEqual(rewritten, original);
+  assert.equal((await call('GET', '/api/index.js?path=groups/nope', { token: body.token })).status, 404);
+});
+
 test('errors come back as JSON with the right status', async () => {
   assert.equal((await call('GET', '/api/me')).status, 401);
   assert.equal((await call('GET', '/api/nope')).status, 404);
