@@ -11,6 +11,7 @@ process.env.KV_REST_API_TOKEN = 'secret';
 process.env.MIN_MEMBERS = '3';
 
 const handler = require('../api/index');
+const push = require('../lib/push');
 
 // --- fake Upstash: GET/pipeline and the compare-and-set EVAL, each answered after a tick
 // so that concurrent requests genuinely interleave.
@@ -92,6 +93,39 @@ test('works whether Vercel passes the original or the rewritten URL', async () =
   assert.equal(original.status, 200);
   assert.deepEqual(rewritten, original);
   assert.equal((await call('GET', '/api/index.js?path=groups/nope', { token: body.token })).status, 404);
+});
+
+test('the daily cron sends once and forgets devices that are gone', async (t) => {
+  process.env.CRON_SECRET = 'cron-secret-xyz';
+  process.env.VAPID_PUBLIC_KEY = 'public';
+  process.env.VAPID_PRIVATE_KEY = 'private';
+  const sent = [];
+  t.mock.method(push, 'sendAll', async (messages) => {
+    sent.push(...messages);
+    return messages.map((m) => m.subscription.endpoint).filter((e) => e.endsWith('/gone'));
+  });
+
+  const players = [];
+  for (const name of ['Eli', 'Fay', 'Gus']) {
+    players.push((await call('POST', '/api/users', { body: { name, username: name.toLowerCase(), password: 'secret123' } })).body);
+  }
+  const group = (await call('POST', '/api/groups', { token: players[0].token, body: { name: 'Matin' } })).body;
+  for (const p of players.slice(1)) await call('POST', '/api/groups/join', { token: p.token, body: { code: group.code } });
+  const subscribe = (p, endpoint) => call('POST', '/api/push/subscribe', { token: p.token, body: { subscription: { endpoint, keys: { p256dh: 'k', auth: 'a' } } } });
+  await subscribe(players[0], 'https://push.example/eli');
+  await subscribe(players[1], 'https://push.example/gone');
+
+  assert.equal((await call('GET', '/api/cron/daily/winter')).status, 403, 'no secret, no notifications');
+  const run = await call('GET', '/api/cron/daily/winter', { token: 'cron-secret-xyz' });
+  assert.equal(run.status, 200);
+  assert.deepEqual(sent.map((m) => m.subscription.endpoint).sort(), ['https://push.example/eli', 'https://push.example/gone']);
+  assert.ok(sent.every((m) => m.payload.title === 'Matin' || m.payload.title === 'Crew'));
+
+  const again = await call('GET', '/api/cron/daily/summer', { token: 'cron-secret-xyz' });
+  assert.equal(again.body.notifications, 0, 'the second morning run sends nothing');
+  assert.deepEqual((await call('GET', '/api/me', { token: players[1].token })).body.push, [], 'the dead device was forgotten');
+  assert.deepEqual((await call('GET', '/api/me', { token: players[0].token })).body.push, ['https://push.example/eli']);
+  delete process.env.CRON_SECRET;
 });
 
 test('errors come back as JSON with the right status', async () => {

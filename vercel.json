@@ -8,5 +8,9 @@
     { "src": "/api/(.*)", "dest": "/api/index.js?path=$1" },
     { "src": "/", "dest": "/public/index.html" },
     { "src": "/(.*)", "dest": "/public/$1" }
+  ],
+  "crons": [
+    { "path": "/api/cron/daily/summer", "schedule": "0 7 * * *" },
+    { "path": "/api/cron/daily/winter", "schedule": "0 8 * * *" }
   ]
 }

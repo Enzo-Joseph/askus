@@ -171,16 +171,18 @@ function dayLabel(key, today) {
   return new Date(`${key}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', month: 'short', day: 'numeric' });
 }
 
-function untilTomorrow() {
-  const now = new Date();
-  const next = new Date(now);
-  next.setHours(24, 0, 0, 0);
-  const mins = Math.ceil((next - now) / 60000);
+// Time left until the next question (the server says when: 9:00 Paris).
+function untilNextQuestion() {
+  const at = state.group?.nextDayAt ?? state.config?.nextDayAt;
+  const mins = Math.ceil((at - Date.now()) / 60000);
+  if (!at || mins <= 0) return 'un instant';
   return `${Math.floor(mins / 60)}\u00a0h\u00a0${String(mins % 60).padStart(2, '0')}`;
 }
 
 setInterval(() => {
-  for (const el of document.querySelectorAll('.countdown-time')) el.textContent = untilTomorrow();
+  for (const el of document.querySelectorAll('.countdown-time')) el.textContent = untilNextQuestion();
+  // the new question is out: fetch it without waiting for the next background refresh
+  if (state.poller && state.group?.nextDayAt && Date.now() >= state.group.nextDayAt) refreshGroup();
 }, 30000);
 
 function openSheet(title, build) {
@@ -476,11 +478,12 @@ function renderProfile() {
       toast('Enregistré', { icon: 'check' });
     }),
     accountCard(me),
+    notificationsCard(),
     h('div', { class: 'card px' },
       h('div', { class: 'h2' }, 'Comment ça marche'),
       h('ul', { class: 'howto' },
         h('li', null, ic('heart'), h('span', null, minMembers > 1 ? `Crée un groupe et fais venir au moins ${minMembers - 1} potes avec le code.` : 'Crée un groupe et partage le code avec tes potes.')),
-        h('li', null, ic('star'), h('span', null, 'Une nouvelle question tombe chaque jour. Vote pour quelqu’un ou choisis ton camp.')),
+        h('li', null, ic('star'), h('span', null, 'Une nouvelle question tombe chaque jour à 9 h. Vote pour quelqu’un ou choisis ton camp.')),
         h('li', null, ic('eye'), h('span', null, 'Tu ne vois les résultats qu’après avoir voté.')),
         h('li', null, ic('flame'), h('span', null, 'Vote tous les jours pour enchaîner une série.')),
         h('li', null, ic('pencil'), h('span', null, 'Tout le monde peut poser sa propre question au groupe, à tout moment.')))),
@@ -495,7 +498,8 @@ function renderProfile() {
         class: 'btn btn-danger btn-block px',
         onclick: action(async () => {
           if (!confirm(`Te déconnecter de cet appareil\u00a0? Tu pourras revenir avec ton pseudo «\u00a0${me.username}\u00a0».`)) return;
-          await api('POST', '/logout').catch(() => {});
+          const sub = await currentPushSubscription();
+          await api('POST', '/logout', { endpoint: sub?.endpoint }).catch(() => {});
           removeAccount(me.id);
           go('#/');
         }),
@@ -512,8 +516,102 @@ function renderProfile() {
               toast(`On est le ${today}`, { icon: 'clock' });
               renderProfile();
             }),
-          }, 'Passer au jour suivant', ic('next')))
+          }, 'Passer au jour suivant', ic('next')),
+          h('button', {
+            class: 'btn btn-block px',
+            onclick: action(async () => {
+              const { notifications } = await api('POST', '/dev/notify-now');
+              toast(`${notifications} notification${notifications > 1 ? 's' : ''} envoyée${notifications > 1 ? 's' : ''}`, { icon: 'check' });
+            }),
+          }, 'Envoyer la notif du jour'))
       : null,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// push notifications
+
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isInstalled = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch((err) => console.warn('service worker:', err));
+
+async function currentPushSubscription() {
+  if (!pushSupported()) return null;
+  const reg = await navigator.serviceWorker.getRegistration();
+  return reg ? reg.pushManager.getSubscription() : null;
+}
+
+// The server's public key comes as base64url; the browser wants raw bytes.
+function keyBytes(base64url) {
+  const base64 = (base64url + '='.repeat((4 - (base64url.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/');
+  return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+}
+
+function notificationsCard() {
+  const body = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } }, spinner());
+  const card = h('div', { class: 'card px', style: { display: 'flex', flexDirection: 'column', gap: '12px' } },
+    h('div', { class: 'h2' }, 'Notifications'),
+    h('p', { class: 'muted small' }, 'Chaque matin à 9\u00a0h, la nouvelle question de tes groupes.'),
+    body);
+  fillNotifications(body);
+  return card;
+}
+
+async function fillNotifications(body) {
+  const show = (...nodes) => body.replaceChildren(...nodes.filter(Boolean));
+  const note = (text) => h('p', { class: 'small' }, text);
+
+  if (!pushSupported()) {
+    return show(note(isIOS() && !isInstalled()
+      ? 'Sur iPhone, ajoute d’abord askUs à l’écran d’accueil (bouton Partager → «\u00a0Sur l’écran d’accueil\u00a0»), puis ouvre-le depuis l’icône.'
+      : 'Ce navigateur ne gère pas les notifications.'));
+  }
+  if (!state.config.pushKey) return show(note('Les notifications ne sont pas encore configurées sur le serveur.'));
+  if (Notification.permission === 'denied') {
+    return show(note('Les notifications sont bloquées pour ce site. Autorise-les dans les réglages du navigateur, puis reviens ici.'));
+  }
+
+  const sub = await currentPushSubscription();
+  const mine = sub && state.me.push?.includes(sub.endpoint);
+  const refresh = () => fillNotifications(body);
+
+  const enable = h('button', {
+    class: 'btn btn-primary btn-block px',
+    onclick: action(async () => {
+      if ((await Notification.requestPermission()) !== 'granted') return refresh();
+      const reg = await navigator.serviceWorker.ready;
+      const subscription = (await reg.pushManager.getSubscription())
+        || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(state.config.pushKey) }));
+      state.me = await api('POST', '/push/subscribe', { subscription: subscription.toJSON() });
+      toast('Notifications activées', { icon: 'check' });
+      refresh();
+    }),
+  }, sub && !mine ? 'Les recevoir sur mon compte' : 'Activer les notifications');
+
+  if (!mine) {
+    return show(sub ? note('Un autre joueur de cet appareil reçoit déjà les notifications.') : null, enable);
+  }
+  show(
+    h('div', { class: 'status-line' }, ic('check'), 'Activées sur cet appareil'),
+    h('div', { class: 'btn-row' },
+      h('button', {
+        class: 'btn px',
+        onclick: action(async () => {
+          const { devices } = await api('POST', '/push/test');
+          toast(devices ? 'Notification envoyée' : 'Aucun appareil abonné', { icon: 'check' });
+        }),
+      }, 'Tester'),
+      h('button', {
+        class: 'btn btn-danger px',
+        onclick: action(async () => {
+          state.me = await api('POST', '/push/unsubscribe', { endpoint: sub.endpoint });
+          await sub.unsubscribe();
+          toast('Notifications désactivées');
+          refresh();
+        }),
+      }, 'Désactiver')),
   );
 }
 
@@ -539,7 +637,7 @@ async function renderHome(nav) {
     homeTopbar(),
     h('div', null,
       h('div', { class: 'h1' }, 'Groupes'),
-      groups.length ? h('p', { class: 'muted', style: { marginTop: '6px' } }, waiting ? `${waiting} en attente de ton vote.` : 'Tu es à jour. Prochaine question à minuit.') : null),
+      groups.length ? h('p', { class: 'muted', style: { marginTop: '6px' } }, waiting ? `${waiting} en attente de ton vote.` : 'Tu es à jour. Prochaine question à 9\u00a0h.') : null),
     groups.length
       ? [groups.map(groupCard), actions]
       : h('div', { class: 'card px empty' },
@@ -748,7 +846,7 @@ function todayTab(g) {
     h('button', { class: 'ask-card px', onclick: () => askSheet(g) },
       ic('pencil', 3),
       h('span', { class: 't' }, h('strong', null, 'Pose ta propre question'), 'Tout le groupe la reçoit aujourd’hui')),
-    h('div', { class: 'countdown' }, ic('clock'), 'Prochaine question dans ', h('span', { class: 'countdown-time' }, untilTomorrow())),
+    h('div', { class: 'countdown' }, ic('clock'), 'Prochaine question dans ', h('span', { class: 'countdown-time' }, untilNextQuestion())),
   ];
 }
 

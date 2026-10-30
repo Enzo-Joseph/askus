@@ -327,6 +327,8 @@ p { margin: 0; }
 .ask-card .t { flex: 1; font-size: 19px; color: var(--muted); }
 .ask-card .t strong { display: block; font-family: var(--font-head); font-weight: 400; font-size: 14px; color: var(--text); text-transform: uppercase; margin-bottom: 2px; }
 
+.status-line { display: flex; align-items: center; gap: 8px; font-family: var(--font-head); font-size: 12px; text-transform: uppercase; color: var(--secondary); }
+
 .countdown { text-align: center; font-size: 19px; color: var(--muted); display: flex; justify-content: center; align-items: center; gap: 8px; }
 
 .pack-card { display: flex; flex-direction: column; gap: 12px; }

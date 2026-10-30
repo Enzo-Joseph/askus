@@ -8,10 +8,14 @@
     "start": "node server.js",
     "dev": "node server.js --dev",
     "test": "node --test test/",
-    "reset-password": "node scripts/reset-password.js"
+    "reset-password": "node scripts/reset-password.js",
+    "vapid-keys": "node scripts/vapid-keys.js"
   },
   "engines": {
     "node": ">=18"
   },
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "dependencies": {
+    "web-push": "^3.6.7"
+  }
 }
