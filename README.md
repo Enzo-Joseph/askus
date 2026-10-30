@@ -70,14 +70,34 @@ api/index.js         Vercel serverless function (same API, data in Redis)
 lib/api.js           API routes shared by both
 lib/game.js          game rules (groups, polls, votes, streaks, packs, comments)
 lib/questions.js     question packs (8 packs, 180 questions)
+lib/auth.js          password hashing (scrypt) and pseudo rules
 lib/store.js         JSON-file persistence (debounced writes)
 lib/redis-store.js   Upstash Redis persistence with compare-and-set saves (Vercel)
 lib/dev.js           dev-mode bots (only reachable with --dev)
 public/              single-page app (vanilla JS, mobile-first)
 public/sprites.js    hand-drawn pixel sprites (avatars + icons), drawn as SVG and on the share-image canvas
-test/                node:test unit tests (game rules, dev bots, Vercel function)
+scripts/             admin commands (reset-password)
+test/                node:test unit tests (game rules, accounts, dev bots, Vercel function)
 ```
 
-Accounts are lightweight: there is no password. Each account's token is stored in the browser's
-localStorage, so signing out of a device means losing that account. This fits a friends-only game;
-add real auth before exposing it publicly.
+## Accounts
+
+Players sign up with a display name (what friends see), a unique **pseudo** and a **password**,
+and can log in from any device (*J'ai déjà un compte*). Each device gets its own session token;
+signing out only closes that device. Passwords are hashed with scrypt (Node's built-in crypto),
+and 5 wrong passwords lock the account for 5 minutes. Accounts created before logins existed are
+asked to choose a pseudo and password the next time they open the app.
+
+There is no email, so a forgotten password is reset by whoever runs the game:
+
+```bash
+npm run reset-password -- <pseudo> <nouveau-mot-de-passe>
+```
+
+This signs the player out everywhere. It edits `data/db.json` (stop the local server first, or
+set `DB_FILE`), or the Vercel database if `KV_REST_API_URL` and `KV_REST_API_TOKEN` are set
+(copy them from Vercel → Storage → your database → *.env.local*), e.g. in PowerShell:
+
+```powershell
+$env:KV_REST_API_URL="https://..."; $env:KV_REST_API_TOKEN="..."; npm run reset-password -- enzo.j nouveau-mdp
+```

@@ -69,6 +69,7 @@ function saveAccounts() {
 }
 
 function addAccount({ token, user }) {
+  accounts.list = accounts.list.filter((a) => a.id !== user.id);
   accounts.list.push({ id: user.id, token, name: user.name, avatar: user.avatar, color: user.color });
   accounts.current = user.id;
   saveAccounts();
@@ -271,6 +272,7 @@ async function route() {
     history.replaceState(null, '', '#/');
     parts.length = 0;
   }
+  if (parts[0] === 'login') return renderLogin();
   if (!currentAccount() || parts[0] === 'new') return renderOnboarding();
 
   setScreen(null, spinner());
@@ -282,6 +284,7 @@ async function route() {
     return renderError(err);
   }
   if (nav !== state.nav) return;
+  if (state.me.needsCredentials) return renderSetCredentials();
 
   const pending = sessionStorage.getItem('askus.join');
   if (pending) {
@@ -312,7 +315,19 @@ function renderError(err) {
 // ---------------------------------------------------------------------------
 // onboarding & profile
 
-function profileForm(initial, submitLabel, onSubmit) {
+let fieldCount = 0;
+function field(label, input, hint) {
+  input.id ||= `field-${++fieldCount}`;
+  return h('div', { class: 'field' }, h('label', { htmlFor: input.id }, label), input, hint ? h('p', { class: 'muted small' }, hint) : null);
+}
+
+// autocomplete values let password managers fill and save logins.
+const pseudoInput = (value = '') =>
+  h('input', { class: 'input px flat', name: 'username', maxLength: 20, autocomplete: 'username', autocapitalize: 'none', spellcheck: false, placeholder: 'ex. enzo.j', value, required: true });
+const passwordInput = (autocomplete, { placeholder = '', required = true } = {}) =>
+  h('input', { class: 'input px flat', type: 'password', name: autocomplete, autocomplete, maxLength: 100, placeholder, required });
+
+function profileForm(initial, submitLabel, onSubmit, { credentials = false } = {}) {
   const pick = (list) => list[Math.floor(Math.random() * list.length)];
   const sel = {
     avatar: isSprite(initial.avatar) ? initial.avatar : pick(AVATAR_IDS),
@@ -324,6 +339,8 @@ function profileForm(initial, submitLabel, onSubmit) {
     preview.style.setProperty('--c', sel.color);
   };
   const name = h('input', { class: 'input px flat', id: 'name', maxLength: 20, placeholder: 'Ton prénom', value: initial.name || '', autocomplete: 'nickname', required: true });
+  const username = credentials ? pseudoInput() : null;
+  const password = credentials ? passwordInput('new-password', { placeholder: '6 caractères minimum' }) : null;
   const submit = h('button', { class: 'btn btn-primary btn-block px', type: 'submit' }, submitLabel);
   return h(
     'form',
@@ -334,7 +351,7 @@ function profileForm(initial, submitLabel, onSubmit) {
         e.preventDefault();
         submit.disabled = true;
         try {
-          await onSubmit({ name: name.value, ...sel });
+          await onSubmit({ name: name.value, ...sel, ...(credentials ? { username: username.value, password: password.value } : {}) });
         } catch (err) {
           toastError(err.message);
         } finally {
@@ -344,6 +361,7 @@ function profileForm(initial, submitLabel, onSubmit) {
     },
     h('div', { style: { display: 'grid', placeItems: 'center', paddingTop: '6px' } }, preview),
     h('div', { class: 'field' }, h('label', { htmlFor: 'name' }, 'Prénom'), name),
+    credentials ? [field('Pseudo', username, 'Pour te connecter. Tes potes voient ton prénom.'), field('Mot de passe', password)] : null,
     h('div', { class: 'field' }, h('label', null, 'Avatar'),
       choiceGrid('emoji-grid', AVATAR_IDS, sel.avatar, (a) => { sel.avatar = a; refresh(); },
         (a, on) => h('button', { class: `emoji-choice px flat${on ? ' selected' : ''}`, 'aria-label': a }, ic(a, 3)))),
@@ -363,12 +381,88 @@ function renderOnboarding() {
       : h('div', { class: 'hero' },
           logo(),
           h('p', { class: 'muted' }, 'Une question par jour sur tes potes. Vote, puis découvre ce qu’ils ont dit de toi.'),
-          h('p', { class: 'prompt' }, '> entre ton prénom')),
-    profileForm({}, adding ? 'Ajouter' : 'Continuer', async (data) => {
+          h('p', { class: 'prompt' }, '> crée ton compte')),
+    profileForm({}, adding ? 'Ajouter' : 'Créer mon compte', async (data) => {
       addAccount(await api('POST', '/users', data));
       go('#/');
-    }),
+    }, { credentials: true }),
+    h('p', { class: 'center muted' }, 'Déjà un compte\u00a0? ', h('button', { class: 'link-btn', onclick: () => (location.hash = '#/login') }, 'Se connecter')),
   );
+}
+
+function renderLogin() {
+  const adding = accounts.list.length > 0;
+  const username = pseudoInput();
+  const password = passwordInput('current-password');
+  setScreen(
+    adding ? topbar({ back: '#/profile', title: 'Se connecter' }) : null,
+    adding ? null : h('div', { class: 'hero' }, logo(), h('p', { class: 'prompt' }, '> connecte-toi')),
+    h('form', {
+      class: 'card px',
+      style: { display: 'flex', flexDirection: 'column', gap: '18px' },
+      onsubmit: action(async (e) => {
+        e.preventDefault();
+        addAccount(await api('POST', '/login', { username: username.value, password: password.value }));
+        go('#/');
+      }),
+    },
+    field('Pseudo', username),
+    field('Mot de passe', password),
+    h('button', { class: 'btn btn-primary btn-block px', type: 'submit' }, 'Se connecter')),
+    h('p', { class: 'center muted' }, 'Pas encore de compte\u00a0? ',
+      h('button', { class: 'link-btn', onclick: () => (location.hash = adding ? '#/new' : '#/') }, 'Créer un compte')),
+    h('p', { class: 'center muted small' }, 'Mot de passe oublié\u00a0? Demande à la personne qui gère le jeu de le réinitialiser.'),
+  );
+}
+
+// Accounts created before logins existed choose a pseudo and password once.
+function renderSetCredentials() {
+  const username = pseudoInput();
+  const password = passwordInput('new-password', { placeholder: '6 caractères minimum' });
+  setScreen(
+    null,
+    h('div', { class: 'hero' },
+      logo(),
+      h('p', { class: 'muted' }, `Salut ${state.me.name}\u00a0! Les comptes ont maintenant un pseudo et un mot de passe, pour jouer depuis n’importe quel appareil.`),
+      h('p', { class: 'prompt' }, '> sécurise ton compte')),
+    h('form', {
+      class: 'card px',
+      style: { display: 'flex', flexDirection: 'column', gap: '18px' },
+      onsubmit: action(async (e) => {
+        e.preventDefault();
+        state.me = await api('POST', '/me/credentials', { username: username.value, password: password.value });
+        toast('Compte sécurisé', { icon: 'check' });
+        route();
+      }),
+    },
+    field('Pseudo', username, 'Pour te connecter. Tes potes voient toujours ton prénom.'),
+    field('Mot de passe', password),
+    h('button', { class: 'btn btn-primary btn-block px', type: 'submit' }, 'Enregistrer')),
+  );
+}
+
+function accountCard(me) {
+  const username = pseudoInput(me.username || '');
+  const current = passwordInput('current-password');
+  const next = passwordInput('new-password', { placeholder: 'Laisse vide pour le garder', required: false });
+  return h('form', {
+    class: 'card px',
+    style: { display: 'flex', flexDirection: 'column', gap: '14px' },
+    onsubmit: action(async (e) => {
+      e.preventDefault();
+      const body = { currentPassword: current.value };
+      if (username.value.trim().toLowerCase() !== me.username) body.username = username.value;
+      if (next.value) body.password = next.value;
+      state.me = { ...state.me, ...(await api('POST', '/me/credentials', body)) };
+      toast('Compte mis à jour', { icon: 'check' });
+      renderProfile();
+    }),
+  },
+  h('div', { class: 'h2' }, 'Compte'),
+  field('Pseudo', username),
+  field('Mot de passe actuel', current),
+  field('Nouveau mot de passe', next),
+  h('button', { class: 'btn btn-block px', type: 'submit' }, 'Mettre à jour'));
 }
 
 function renderProfile() {
@@ -381,6 +475,7 @@ function renderProfile() {
       syncAccount(state.me);
       toast('Enregistré', { icon: 'check' });
     }),
+    accountCard(me),
     h('div', { class: 'card px' },
       h('div', { class: 'h2' }, 'Comment ça marche'),
       h('ul', { class: 'howto' },
@@ -398,11 +493,12 @@ function renderProfile() {
       h('button', { class: 'btn btn-ghost btn-block px', onclick: () => (location.hash = '#/new') }, ic('plus'), 'Ajouter un joueur'),
       h('button', {
         class: 'btn btn-danger btn-block px',
-        onclick: () => {
-          if (!confirm(`Déconnecter ${me.name} de cet appareil\u00a0? Il n’y a pas de mot de passe\u00a0: le compte sera perdu.`)) return;
+        onclick: action(async () => {
+          if (!confirm(`Te déconnecter de cet appareil\u00a0? Tu pourras revenir avec ton pseudo «\u00a0${me.username}\u00a0».`)) return;
+          await api('POST', '/logout').catch(() => {});
           removeAccount(me.id);
           go('#/');
-        },
+        }),
       }, 'Se déconnecter')),
     state.config.dev
       ? h('div', { class: 'card px', style: { display: 'flex', flexDirection: 'column', gap: '12px' } },

@@ -107,7 +107,8 @@ test('anyone can ask their own question, as often as they like', () => {
 
 test('players have no coins', () => {
   const { game, ana } = setup();
-  assert.deepEqual(Object.keys(game.me(ana)).sort(), ['avatar', 'color', 'id', 'name']);
+  assert.ok(!('coins' in game.me(ana)));
+  assert.ok(!('coins' in ana));
 });
 
 test('comments require a vote and keep replies one level deep', () => {

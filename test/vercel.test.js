@@ -57,8 +57,8 @@ function call(method, path, { token, body } = {}) {
 
 test('the API works end to end with data kept in Redis', async () => {
   const players = [];
-  for (const name of ['Ana', 'Ben', 'Cléo']) {
-    const { status, body } = await call('POST', '/api/users', { body: { name } });
+  for (const name of ['Ana', 'Ben', 'Cleo']) {
+    const { status, body } = await call('POST', '/api/users', { body: { name, username: name.toLowerCase(), password: 'secret123' } });
     assert.equal(status, 200);
     players.push(body);
   }
@@ -86,7 +86,7 @@ test('the API works end to end with data kept in Redis', async () => {
 });
 
 test('works whether Vercel passes the original or the rewritten URL', async () => {
-  const { body } = await call('POST', '/api/users', { body: { name: 'Dana' } });
+  const { body } = await call('POST', '/api/users', { body: { name: 'Dana', username: 'dana', password: 'secret123' } });
   const original = await call('GET', '/api/me', { token: body.token });
   const rewritten = await call('GET', '/api/index.js?path=me', { token: body.token });
   assert.equal(original.status, 200);
